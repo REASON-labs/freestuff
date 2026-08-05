@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} · {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="empty">
+  <p class="empty-emoji" aria-hidden="true">{{ '🔍' if code == 404 else '⚠️' }}</p>
+  <p class="empty-title">{{ message }}</p>
+  <a class="btn btn-ghost" href="{{ url_for('index') }}">Back to the board</a>
+</div>
+{% endblock %}

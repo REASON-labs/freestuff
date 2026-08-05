@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit item' if item else 'Add item' }} · {{ site_name }}{% endblock %}
+
+{% block content %}
+<a class="back" href="{{ url_for('admin_dashboard') }}">← Back to items</a>
+
+<div class="form-panel">
+  <h1>{{ 'Edit item' if item else 'Add an item' }}</h1>
+
+  <form method="post"
+        action="{{ url_for('admin_item_edit', item_id=item.id) if item else url_for('admin_item_new') }}"
+        enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <label>Title
+      <input type="text" name="title" maxlength="120" required
+             value="{{ form.title if form.title is defined else '' }}">
+    </label>
+
+    <label>Description <span class="hint">optional</span>
+      <textarea name="description" rows="4" maxlength="2000">{{ form.description if form.description is defined else '' }}</textarea>
+    </label>
+
+    <label>Photo <span class="hint">JPG, PNG, HEIC, GIF, or WEBP — max 8 MB</span>
+      <input type="file" name="image_file"
+             accept=".heic,.heif,image/heic,image/heif,image/png,image/jpeg,image/gif,image/webp">
+    </label>
+
+    {% if item and item.image_url %}
+      <div class="current-photo">
+        <img src="{{ item.image_url }}" alt="Current photo">
+        <span class="hint">Current photo — upload a new one to replace it.</span>
+      </div>
+    {% endif %}
+
+    <label>…or paste an image URL <span class="hint">optional</span>
+      <input type="url" name="image_url"
+             value="{{ item.image_url if item and not (item.image_url.startswith('/uploads/')) else '' }}"
+             placeholder="https://…">
+    </label>
+
+    {% if item %}
+      <label>Status
+        <select name="status">
+          <option value="available" {{ 'selected' if item.status == 'available' }}>On the board</option>
+          <option value="gone" {{ 'selected' if item.status == 'gone' }}>Given away</option>
+        </select>
+      </label>
+    {% endif %}
+
+    <button type="submit" class="btn btn-primary">{{ 'Save changes' if item else 'Add item' }}</button>
+  </form>
+
+  {% if item %}
+    <form method="post" action="{{ url_for('admin_item_delete', item_id=item.id) }}"
+          class="danger-form"
+          onsubmit="return confirm('Delete “{{ item.title }}” and all its claims? This cannot be undone.');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="link-btn danger">Delete this item</button>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

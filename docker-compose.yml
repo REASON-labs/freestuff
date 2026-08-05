@@ -1,0 +1,18 @@
+services:
+  freeshare:
+    build: .
+    # image: freeshare:latest   # uncomment if you prefer a prebuilt image
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"   # bound to localhost; put a reverse proxy in front for HTTPS
+    environment:
+      SITE_NAME: "${SITE_NAME:-Free Stuff}"
+      SITE_TAGLINE: "${SITE_TAGLINE:-Take what you'll love.}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}"
+      SECRET_KEY: "${SECRET_KEY:?set SECRET_KEY in .env}"
+      MAX_UPLOAD_MB: "${MAX_UPLOAD_MB:-8}"
+    volumes:
+      - freeshare_data:/data
+
+volumes:
+  freeshare_data:

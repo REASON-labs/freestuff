@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title }} · Admin{% endblock %}
+
+{% block content %}
+<a class="back" href="{{ url_for('admin_dashboard') }}">← Back to items</a>
+
+<div class="manage-head">
+  <div>
+    <h1>{{ item.title }}</h1>
+    {% if item.status == 'gone' %}
+      <span class="status-pill status-gone">Given away</span>
+    {% elif recipient %}
+      <span class="status-pill status-claimed">Claimed{% if waitlist %} · {{ waitlist|length }} waiting{% endif %}</span>
+    {% else %}
+      <span class="status-pill status-available">Available</span>
+    {% endif %}
+  </div>
+  <div class="manage-actions">
+    <a class="btn btn-ghost" href="{{ url_for('admin_item_edit', item_id=item.id) }}">Edit details</a>
+    {% if item.status == 'gone' %}
+      <form method="post" action="{{ url_for('admin_item_reopen', item_id=item.id) }}" class="inline">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-primary">Put back on the board</button>
+      </form>
+    {% elif recipient %}
+      <form method="post" action="{{ url_for('admin_item_given', item_id=item.id) }}" class="inline"
+            onsubmit="return confirm('Mark as given away to {{ recipient.name }}?');">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-primary">Mark given away</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+{% if item.status != 'gone' %}
+  <section class="queue">
+    <h2>Queue</h2>
+    {% if recipient %}
+      <div class="claim-card claim-card--first">
+        <div class="claim-rank">1st</div>
+        <div class="claim-detail">
+          <div class="claim-name">{{ recipient.name }}</div>
+          <div class="claim-meta">
+            <span>{{ recipient.contact }}</span>
+            <span class="dot">·</span>
+            <span>pickup {{ recipient.pickup_date }}{% if recipient.pickup_time %} at {{ recipient.pickup_time }}{% endif %}</span>
+            {% if recipient.pickup_date in blocked_set %}<span class="blocked-flag">date now blocked</span>{% endif %}
+          </div>
+          {% if recipient.note %}<div class="claim-note">"{{ recipient.note }}"</div>{% endif %}
+        </div>
+        <form method="post" action="{{ url_for('admin_claim_remove', claim_id=recipient.id) }}"
+              onsubmit="return confirm('Remove {{ recipient.name }}? The next person moves up.');">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="link-btn danger">Remove</button>
+        </form>
+      </div>
+
+      {% for c in waitlist %}
+        <div class="claim-card">
+          <div class="claim-rank">#{{ loop.index + 1 }}</div>
+          <div class="claim-detail">
+            <div class="claim-name">{{ c.name }}</div>
+            <div class="claim-meta">
+              <span>{{ c.contact }}</span>
+              <span class="dot">·</span>
+              <span>pickup {{ c.pickup_date }}{% if c.pickup_time %} at {{ c.pickup_time }}{% endif %}</span>
+              {% if c.pickup_date in blocked_set %}<span class="blocked-flag">date now blocked</span>{% endif %}
+            </div>
+            {% if c.note %}<div class="claim-note">"{{ c.note }}"</div>{% endif %}
+          </div>
+          <form method="post" action="{{ url_for('admin_claim_remove', claim_id=c.id) }}"
+                onsubmit="return confirm('Remove {{ c.name }} from the waitlist?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="link-btn danger">Remove</button>
+          </form>
+        </div>
+      {% endfor %}
+    {% else %}
+      <p class="queue-empty">No one's claimed this yet.</p>
+    {% endif %}
+  </section>
+{% endif %}
+
+{% if history %}
+  <details class="history">
+    <summary>History ({{ history|length }})</summary>
+    <ul class="history-list">
+      {% for c in history %}
+        <li>
+          <span class="history-status history-{{ c.status }}">{{ c.status }}</span>
+          {{ c.name }} — {{ c.contact }}
+          {% if c.pickup_date %}<span class="dot">·</span> {{ c.pickup_date }}{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </details>
+{% endif %}
+{% endblock %}

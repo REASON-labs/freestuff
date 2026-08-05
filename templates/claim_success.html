@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}You're on the list · {{ site_name }}{% endblock %}
+
+{% block content %}
+<article class="confirm">
+  {% if position is none %}
+    <p class="confirm-emoji" aria-hidden="true">✓</p>
+    <h1>Claim withdrawn</h1>
+    <p class="confirm-sub">You're no longer in line for <strong>{{ item.title }}</strong>. No worries — you can claim it again from the board if it's still available.</p>
+  {% elif position == 0 %}
+    <p class="confirm-emoji" aria-hidden="true">🎉</p>
+    <h1>You're first in line!</h1>
+    <p class="confirm-sub">You've got dibs on <strong>{{ item.title }}</strong>. Whoever's giving it away has your details and will sort out the handoff for <strong>{{ claim.pickup_date }}</strong>.</p>
+  {% else %}
+    <p class="confirm-emoji" aria-hidden="true">📋</p>
+    <h1>You're #{{ position }} on the waitlist</h1>
+    <p class="confirm-sub">You're on the waitlist for <strong>{{ item.title }}</strong>. If the people ahead of you pass, you move up — we'll reach out using the contact info you gave.</p>
+  {% endif %}
+
+  <div class="confirm-card">
+    <div class="confirm-row"><span>Item</span><strong>{{ item.title }}</strong></div>
+    <div class="confirm-row"><span>Name</span><strong>{{ claim.name }}</strong></div>
+    <div class="confirm-row"><span>Contact</span><strong>{{ claim.contact }}</strong></div>
+    <div class="confirm-row"><span>Pickup date</span><strong>{{ claim.pickup_date }}</strong></div>
+    {% if claim.pickup_time %}<div class="confirm-row"><span>Estimated time</span><strong>{{ claim.pickup_time }}</strong></div>{% endif %}
+  </div>
+
+  <p class="fineprint">Bookmark this page — it's your personal link. Come back here anytime to check your spot or withdraw.</p>
+
+  {% if position is not none %}
+    <form method="post" action="{{ url_for('claim_cancel', token=claim.token) }}"
+          onsubmit="return confirm('Withdraw your claim for {{ item.title }}?');">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="btn btn-ghost">Withdraw my claim</button>
+    </form>
+  {% endif %}
+
+  <a class="back" href="{{ url_for('index') }}">← Back to the board</a>
+</article>
+{% endblock %}

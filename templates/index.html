@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <h1 class="hero-title">{{ site_tagline }}</h1>
+  <p class="hero-sub">Browse what's up for grabs. See something you want? Claim it and pick a day to swing by. If it's already spoken for, hop on the waitlist.</p>
+</section>
+
+{% if live %}
+  <div class="tag-grid">
+    {% for row in live %}
+      {% set item = row.item %}
+      <a class="tag {{ 'is-claimed' if row.claimed else 'is-open' }}" href="{{ url_for('item_detail', item_id=item.id) }}">
+        <span class="tag-hole" aria-hidden="true"></span>
+        <span class="tag-ribbon">{{ row.label }}</span>
+        {% if item.image_url %}
+          <span class="tag-photo" style="background-image:url('{{ item.image_url }}')"></span>
+        {% else %}
+          <span class="tag-photo tag-photo--empty" aria-hidden="true">🎁</span>
+        {% endif %}
+        <span class="tag-body">
+          <span class="tag-title">{{ item.title }}</span>
+          {% if item.description %}
+            <span class="tag-desc">{{ item.description|truncate(90) }}</span>
+          {% endif %}
+        </span>
+        <span class="tag-cta">
+          {% if row.claimed %}Join the waitlist →{% else %}Claim it →{% endif %}
+        </span>
+      </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="empty">
+    <p class="empty-emoji" aria-hidden="true">🍃</p>
+    <p class="empty-title">Nothing on the board right now.</p>
+    <p class="empty-sub">Check back soon — new giveaways show up here.</p>
+  </div>
+{% endif %}
+
+{% if given %}
+  <details class="given-away">
+    <summary>Recently given away ({{ given|length }})</summary>
+    <ul class="given-list">
+      {% for row in given %}
+        <li>{{ row.item.title }}</li>
+      {% endfor %}
+    </ul>
+  </details>
+{% endif %}
+{% endblock %}

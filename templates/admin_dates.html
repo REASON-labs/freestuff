@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Blocked dates · Admin{% endblock %}
+
+{% block content %}
+<a class="back" href="{{ url_for('admin_dashboard') }}">← Back to items</a>
+
+<div class="form-panel">
+  <h1>Blocked pickup dates</h1>
+  <p class="panel-intro">Days you block here can't be chosen as a pickup date on any item — handy for holidays or times you're away.</p>
+
+  <form method="post" action="{{ url_for('admin_dates') }}" class="block-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Date
+      <input type="date" name="date" min="{{ today }}" required>
+    </label>
+    <label>Reason <span class="hint">optional, shown to visitors</span>
+      <input type="text" name="reason" maxlength="120" placeholder="Out of town">
+    </label>
+    <button type="submit" class="btn btn-primary">Block this date</button>
+  </form>
+
+  {% if blocked %}
+    <ul class="block-list">
+      {% for b in blocked %}
+        <li class="block-row {{ 'is-past' if b.date < today }}">
+          <div>
+            <span class="block-date">{{ b.date }}</span>
+            {% if b.reason %}<span class="block-reason">{{ b.reason }}</span>{% endif %}
+            {% if b.date < today %}<span class="block-past">past</span>{% endif %}
+          </div>
+          <form method="post" action="{{ url_for('admin_dates_delete', date_id=b.id) }}" class="inline">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="link-btn danger">Remove</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="queue-empty">No blocked dates. Every upcoming day is open for pickups.</p>
+  {% endif %}
+</div>
+{% endblock %}

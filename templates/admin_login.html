@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Admin · {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="login">
+  <h1>Admin sign in</h1>
+  <form method="post" action="{{ url_for('admin_login') }}{% if request.args.get('next') %}?next={{ request.args.get('next') }}{% endif %}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Password
+      <input type="password" name="password" required autofocus autocomplete="current-password">
+    </label>
+    <button type="submit" class="btn btn-primary">Sign in</button>
+  </form>
+</div>
+{% endblock %}

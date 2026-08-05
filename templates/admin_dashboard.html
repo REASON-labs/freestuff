@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Admin · {{ site_name }}{% endblock %}
+
+{% block content %}
+<div class="admin-head">
+  <h1>Manage items</h1>
+  <div class="admin-head-actions">
+    <a class="btn btn-ghost" href="{{ url_for('admin_dates') }}">Blocked dates{% if upcoming_blocked %} ({{ upcoming_blocked }}){% endif %}</a>
+    <a class="btn btn-primary" href="{{ url_for('admin_item_new') }}">+ Add an item</a>
+  </div>
+</div>
+
+{% if rows %}
+<table class="admin-table">
+  <thead>
+    <tr><th>Item</th><th>Status</th><th>First in line</th><th>Waiting</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+      {% set item = row.item %}
+      <tr>
+        <td>
+          <a class="cell-title" href="{{ url_for('admin_item_manage', item_id=item.id) }}">{{ item.title }}</a>
+        </td>
+        <td>
+          {% if item.status == 'gone' %}
+            <span class="status-pill status-gone">Given away</span>
+          {% elif row.recipient %}
+            <span class="status-pill status-claimed">Claimed</span>
+          {% else %}
+            <span class="status-pill status-available">Available</span>
+          {% endif %}
+        </td>
+        <td>{{ row.recipient.name if row.recipient else '—' }}</td>
+        <td>{{ row.waiting or '—' }}</td>
+        <td class="cell-actions">
+          <a href="{{ url_for('admin_item_manage', item_id=item.id) }}">Manage</a>
+        </td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <div class="empty">
+    <p class="empty-title">No items yet.</p>
+    <p class="empty-sub">Add your first giveaway to get the board going.</p>
+  </div>
+{% endif %}
+{% endblock %}

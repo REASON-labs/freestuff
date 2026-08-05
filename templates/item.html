@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title }} · {{ site_name }}{% endblock %}
+
+{% block content %}
+<a class="back" href="{{ url_for('index') }}">← Back to the board</a>
+
+<article class="detail">
+  <div class="detail-media">
+    {% if item.image_url %}
+      <img src="{{ item.image_url }}" alt="{{ item.title }}">
+    {% else %}
+      <div class="detail-media--empty" aria-hidden="true">🎁</div>
+    {% endif %}
+  </div>
+
+  <div class="detail-info">
+    <span class="status-pill status-{{ state }}">{{ label }}</span>
+    <h1 class="detail-title">{{ item.title }}</h1>
+    {% if item.description %}
+      <p class="detail-desc">{{ item.description }}</p>
+    {% endif %}
+
+    {% if state == 'gone' %}
+      <div class="notice">This one has found a home. Thanks for looking!</div>
+    {% else %}
+      {% if claimed %}
+        <div class="notice notice-soft">
+          Someone's first in line for this. You can join the waitlist —
+          if they don't pick it up, you're next.
+          {% if waiting %}<strong>{{ waiting }}</strong> already waiting.{% endif %}
+        </div>
+      {% endif %}
+
+      <form class="claim-form" method="post" action="{{ url_for('claim', item_id=item.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <h2 class="form-heading">{{ 'Join the waitlist' if claimed else 'Claim this item' }}</h2>
+
+        <label>Your name
+          <input type="text" name="name" maxlength="120" required autocomplete="name">
+        </label>
+
+        <label>How can we reach you? <span class="hint">email or phone</span>
+          <input type="text" name="contact" maxlength="200" required
+                 placeholder="you@example.com or 555-123-4567">
+        </label>
+
+        <label>Pickup date
+          <input type="date" name="pickup_date" id="pickup_date" min="{{ today }}" required>
+        </label>
+
+        {% if blocked %}
+          <p class="blocked-note" id="blocked-note">
+            Unavailable for pickup:
+            {% for b in blocked %}<span class="blocked-chip">{{ b.date }}{% if b.reason %} ({{ b.reason }}){% endif %}</span>{% endfor %}
+          </p>
+        {% endif %}
+
+        <label>Estimated pickup time <span class="hint">optional</span>
+          <input type="time" name="pickup_time">
+        </label>
+
+        <label>Anything to add? <span class="hint">optional</span>
+          <textarea name="note" rows="3" maxlength="500"
+                    placeholder="Best times to come by, questions, etc."></textarea>
+        </label>
+
+        <button type="submit" class="btn btn-primary">
+          {{ 'Add me to the waitlist' if claimed else 'Claim it' }}
+        </button>
+        <p class="fineprint">Your contact details are only visible to whoever's giving this away — never shown publicly.</p>
+      </form>
+
+      {% if blocked %}
+      <script>
+        (function () {
+          var blocked = {{ blocked | map(attribute='date') | list | tojson }};
+          var input = document.getElementById('pickup_date');
+          var note = document.getElementById('blocked-note');
+          if (!input) return;
+          input.addEventListener('input', function () {
+            if (blocked.indexOf(input.value) !== -1) {
+              input.setCustomValidity('That date is unavailable — please pick another.');
+              input.reportValidity();
+              if (note) note.classList.add('blocked-note--alert');
+            } else {
+              input.setCustomValidity('');
+              if (note) note.classList.remove('blocked-note--alert');
+            }
+          });
+        })();
+      </script>
+      {% endif %}
+    {% endif %}
+  </div>
+</article>
+{% endblock %}
