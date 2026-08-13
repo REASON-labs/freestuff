@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in improving FreeShare! It's a small project, so the
+Thanks for your interest in improving FreeStuff! It's a small project, so the
 process is light.
 
 ## Getting set up
@@ -26,7 +26,7 @@ python -m pytest
 
 ## Guidelines
 
-- Keep it simple. FreeShare is meant to be a small, readable, single-file app
+- Keep it simple. FreeStuff is meant to be a small, readable, single-file app
   that anyone can host. New features should earn their complexity.
 - Add or update a test in `tests/test_app.py` for any behaviour change.
 - Please make sure `python -m pytest` passes before opening a pull request (CI

@@ -1,4 +1,4 @@
-# FreeShare
+# FreeStuff
 
 A tiny, self-hostable board for giving things away to friends. Post an item, let
 people claim it, and keep an orderly waitlist for everyone after the first.
@@ -45,8 +45,8 @@ there's nothing to get out of sync:
 ## Quick start (Docker Compose)
 
 ```bash
-git clone https://github.com/<your-username>/freeshare.git
-cd freeshare
+git clone https://github.com/<your-username>/freestuff.git
+cd freestuff
 cp .env.example .env
 
 # generate a session secret and append it
@@ -57,7 +57,7 @@ docker compose up -d --build
 ```
 
 The app listens on `127.0.0.1:8000`. Sign in at `/admin/login`. Data (the SQLite
-database and uploaded photos) lives in the `freeshare_data` Docker volume, so it
+database and uploaded photos) lives in the `freestuff_data` Docker volume, so it
 survives restarts and rebuilds.
 
 ## Running locally (no Docker)
@@ -117,11 +117,11 @@ server {
 Everything lives in one place — the data volume:
 
 ```bash
-docker run --rm -v freeshare_data:/data -v "$PWD":/backup alpine \
-    tar czf /backup/freeshare-backup-$(date +%F).tar.gz -C /data .
+docker run --rm -v freestuff_data:/data -v "$PWD":/backup alpine \
+    tar czf /backup/freestuff-backup-$(date +%F).tar.gz -C /data .
 ```
 
-The SQLite file is `freeshare.db`; uploaded photos are under `uploads/`.
+The SQLite file is `freestuff.db`; uploaded photos are under `uploads/`.
 
 ## Development
 

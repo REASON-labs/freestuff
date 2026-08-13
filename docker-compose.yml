@@ -1,7 +1,7 @@
 services:
-  freeshare:
+  freestuff:
     build: .
-    # image: freeshare:latest   # uncomment if you prefer a prebuilt image
+    # image: freestuff:latest   # uncomment if you prefer a prebuilt image
     restart: unless-stopped
     ports:
       - "127.0.0.1:8000:8000"   # bound to localhost; put a reverse proxy in front for HTTPS
@@ -12,7 +12,7 @@ services:
       SECRET_KEY: "${SECRET_KEY:?set SECRET_KEY in .env}"
       MAX_UPLOAD_MB: "${MAX_UPLOAD_MB:-8}"
     volumes:
-      - freeshare_data:/data
+      - freestuff_data:/data
 
 volumes:
-  freeshare_data:
+  freestuff_data:

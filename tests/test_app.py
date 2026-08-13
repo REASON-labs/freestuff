@@ -1,4 +1,4 @@
-"""Test suite for FreeShare.
+"""Test suite for FreeStuff.
 
 Run with:  python -m pytest
 """
@@ -12,7 +12,7 @@ import pytest
 
 # Configure a throwaway data directory BEFORE importing the app, since the app
 # reads its configuration and initialises the database at import time.
-_TMP = tempfile.mkdtemp(prefix="freeshare-test-")
+_TMP = tempfile.mkdtemp(prefix="freestuff-test-")
 os.environ["DATA_DIR"] = _TMP
 os.environ["ADMIN_PASSWORD"] = "test-pass"
 os.environ["SECRET_KEY"] = "test-secret"
@@ -253,7 +253,7 @@ def test_bad_upload_type_is_rejected(client):
 def test_migration_adds_pickup_time_to_old_db():
     """A database created before pickup_time existed should be upgraded in place
     without losing data."""
-    tmp = tempfile.mkdtemp(prefix="freeshare-migrate-")
+    tmp = tempfile.mkdtemp(prefix="freestuff-migrate-")
     old_db = os.path.join(tmp, "old.db")
     con = sqlite3.connect(old_db)
     con.executescript("""

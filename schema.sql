@@ -1,4 +1,4 @@
--- FreeShare database schema
+-- FreeStuff database schema
 
 CREATE TABLE IF NOT EXISTS items (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

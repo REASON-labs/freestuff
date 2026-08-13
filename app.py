@@ -1,5 +1,5 @@
 """
-FreeShare — a tiny self-hosted board for giving things away to friends.
+FreeStuff — a tiny self-hosted board for giving things away to friends.
 
 Public side:  browse available items, claim one (or join its waitlist).
 Admin side:   add / edit / delete items, see the queue and contact details,
@@ -43,7 +43,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 UPLOAD_DIR = DATA_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-DB_PATH = DATA_DIR / "freeshare.db"
+DB_PATH = DATA_DIR / "freestuff.db"
 
 SITE_NAME = os.environ.get("SITE_NAME", "Free Stuff")
 SITE_TAGLINE = os.environ.get(
