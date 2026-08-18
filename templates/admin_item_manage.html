@@ -24,7 +24,7 @@
       </form>
     {% elif recipient %}
       <form method="post" action="{{ url_for('admin_item_given', item_id=item.id) }}" class="inline"
-            onsubmit="return confirm('Mark as given away to {{ recipient.name }}?');">
+            data-confirm="Mark as given away to {{ recipient.name }}?">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="btn btn-primary">Mark given away</button>
       </form>
@@ -49,7 +49,7 @@
           {% if recipient.note %}<div class="claim-note">"{{ recipient.note }}"</div>{% endif %}
         </div>
         <form method="post" action="{{ url_for('admin_claim_remove', claim_id=recipient.id) }}"
-              onsubmit="return confirm('Remove {{ recipient.name }}? The next person moves up.');">
+              data-confirm="Remove {{ recipient.name }}? The next person moves up.">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button class="link-btn danger">Remove</button>
         </form>
@@ -69,7 +69,7 @@
             {% if c.note %}<div class="claim-note">"{{ c.note }}"</div>{% endif %}
           </div>
           <form method="post" action="{{ url_for('admin_claim_remove', claim_id=c.id) }}"
-                onsubmit="return confirm('Remove {{ c.name }} from the waitlist?');">
+                data-confirm="Remove {{ c.name }} from the waitlist?">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="link-btn danger">Remove</button>
           </form>

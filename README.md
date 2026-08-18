@@ -27,6 +27,9 @@ container, so it's happy on a small VPS, a home server, or a Raspberry Pi.
   Public pages just show *Available* / *Claimed · N waiting* / *Given away*.
 - **Built-in safety** — CSRF protection, upload validation, autoescaped
   templates, and a private per-claim link people can use to withdraw themselves.
+- **Light & dark themes** — follows the visitor's system setting by default; the
+  header toggle cycles System → Light → Dark and remembers the choice. No JS
+  required for the system default.
 
 ![Claiming an item](docs/screenshot-claim.png)
 
@@ -138,7 +141,8 @@ CI runs the test suite on Python 3.9, 3.11, and 3.12.
 app.py               # the whole application (routes, auth, claim logic)
 schema.sql           # database schema
 templates/           # Jinja2 templates
-static/style.css     # styling
+static/style.css     # styling + light/dark design tokens
+static/theme.js      # theme toggle (system / light / dark)
 tests/               # pytest suite
 Dockerfile
 docker-compose.yml

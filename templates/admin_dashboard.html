@@ -13,7 +13,13 @@
 {% if rows %}
 <table class="admin-table">
   <thead>
-    <tr><th>Item</th><th>Status</th><th>First in line</th><th>Waiting</th><th></th></tr>
+    <tr>
+      <th scope="col">Item</th>
+      <th scope="col">Status</th>
+      <th scope="col">First in line</th>
+      <th scope="col">Waiting</th>
+      <th scope="col"><span class="sr-only">Actions</span></th>
+    </tr>
   </thead>
   <tbody>
     {% for row in rows %}

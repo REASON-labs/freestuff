@@ -285,3 +285,127 @@ def test_migration_adds_pickup_time_to_old_db():
         con.close()
     finally:
         fs.DB_PATH = original
+
+
+# --------------------------------------------------------------------------- #
+# Regression tests for the security / correctness pass
+# --------------------------------------------------------------------------- #
+def test_post_without_any_session_token_is_rejected(client):
+    """A POST from a session that never rendered a form must not pass CSRF.
+
+    The old check compared the submitted token with session.get(..., "") — so
+    an empty submitted token matched an absent session token and sailed through.
+    """
+    login(client)
+    add_item(client)
+    fresh = fs.app.test_client()          # never loaded a page, so no token
+    resp = fresh.post("/item/1/claim", data={
+        "name": "Mallory", "contact": "m@example.com", "pickup_date": "2099-01-01",
+    })
+    assert resp.status_code == 400
+    assert db().execute("SELECT COUNT(*) c FROM claims").fetchone()["c"] == 0
+
+
+def test_non_ascii_password_does_not_500(client):
+    """hmac.compare_digest raises TypeError on non-ASCII strings."""
+    token = csrf(client.get("/admin/login").get_data(as_text=True))
+    resp = client.post("/admin/login",
+                       data={"password": "hünter2", "csrf_token": token})
+    assert resp.status_code == 200
+    assert b"didn&#39;t match" in resp.data or b"didn't match" in resp.data
+
+
+def test_non_ascii_csrf_token_is_rejected_not_500(client):
+    login(client)
+    add_item(client)
+    client.get("/item/1")                 # establish a session token
+    resp = client.post("/item/1/claim", data={
+        "name": "Ana", "contact": "a@example.com",
+        "pickup_date": "2099-01-01", "csrf_token": "café",
+    })
+    assert resp.status_code == 400
+
+
+def test_claimant_name_cannot_inject_script_into_admin_page(client):
+    """Names are rendered into a data-confirm attribute, never a JS string."""
+    login(client)
+    add_item(client)
+    payload = "Bob'+(window.pwned=1)+'"
+    claim_item(client, 1, name=payload)
+    html = client.get("/admin/item/1").get_data(as_text=True)
+    # No inline handler anywhere, so there is no JavaScript string literal for
+    # the name to break out of...
+    assert "onsubmit" not in html
+    # ...and the name survives only as escaped text inside a data attribute.
+    assert 'data-confirm="Remove Bob&#39;+(window.pwned=1)+&#39;?' in html
+    assert "confirm('Remove Bob'" not in html
+
+
+def test_deleting_an_item_removes_its_uploaded_photo(client):
+    login(client)
+    upload = fs.UPLOAD_DIR / "deadbeef.png"
+    upload.write_bytes(b"not really a png")
+    token = csrf(client.get("/admin/item/new").get_data(as_text=True))
+    client.post("/admin/item/new", data={
+        "title": "Lamp", "image_url": "/uploads/deadbeef.png",
+        "csrf_token": token,
+    }, follow_redirects=True)
+    assert upload.exists()
+    token = csrf(client.get("/admin/item/1/edit").get_data(as_text=True))
+    client.post("/admin/item/1/delete", data={"csrf_token": token},
+                follow_redirects=True)
+    assert not upload.exists()
+
+
+def test_external_image_urls_are_left_alone_on_delete(client):
+    """Only our own /uploads/ files get unlinked."""
+    login(client)
+    add_item(client, image_url="https://example.com/chair.jpg")
+    token = csrf(client.get("/admin/item/1/edit").get_data(as_text=True))
+    resp = client.post("/admin/item/1/delete", data={"csrf_token": token},
+                       follow_redirects=True)
+    assert resp.status_code == 200
+
+
+def test_dangerous_image_urls_are_rejected(client):
+    login(client)
+    for bad in ("javascript:alert(1)",
+                "data:text/html,<script>alert(1)</script>",
+                "https://x.test/a.png');background:url('evil"):
+        resp = add_item(client, title="Bad", image_url=bad)
+        assert resp.status_code == 200
+    assert db().execute("SELECT COUNT(*) c FROM items").fetchone()["c"] == 0
+
+
+def test_valid_image_urls_still_work(client):
+    login(client)
+    add_item(client, image_url="https://example.com/chair.jpg")
+    row = db().execute("SELECT image_url FROM items").fetchone()
+    assert row["image_url"] == "https://example.com/chair.jpg"
+
+
+def test_timezone_setting_controls_today(monkeypatch):
+    monkeypatch.setattr(fs, "TIMEZONE", "Pacific/Kiritimati")   # UTC+14
+    ahead = fs.today_str()
+    monkeypatch.setattr(fs, "TIMEZONE", "Pacific/Midway")       # UTC-11
+    behind = fs.today_str()
+    assert ahead >= behind
+
+
+def test_unknown_timezone_falls_back_instead_of_crashing(monkeypatch):
+    monkeypatch.setattr(fs, "TIMEZONE", "Mars/Olympus_Mons")
+    assert re.match(r"^\d{4}-\d{2}-\d{2}$", fs.today_str())
+
+
+def test_login_rotates_the_session(client):
+    """A pre-login session token must not survive the privilege change."""
+    before = csrf(client.get("/admin/login").get_data(as_text=True))
+    client.post("/admin/login",
+                data={"password": "test-pass", "csrf_token": before})
+    after = csrf(client.get("/admin").get_data(as_text=True))
+    assert after != before
+
+
+def test_wal_mode_is_enabled(client):
+    con = db()
+    assert con.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"

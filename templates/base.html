@@ -4,8 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ site_name }}{% endblock %}</title>
+  <meta name="color-scheme" content="light dark">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}">
+  {#- Applied before first paint so a dark-mode user never sees a light flash. -#}
+  <script>
+    (function () {
+      try {
+        var choice = localStorage.getItem('freestuff-theme');
+        if (choice === 'dark' || choice === 'light') {
+          document.documentElement.setAttribute('data-theme', choice);
+        }
+      } catch (e) { /* private mode / storage disabled — fall back to system */ }
+    })();
+  </script>
 </head>
 <body>
   <header class="site-header">
@@ -15,6 +27,11 @@
         <span class="brand-name">{{ site_name }}</span>
       </a>
       <nav class="site-nav">
+        <button type="button" class="theme-toggle" id="theme-toggle" hidden
+                aria-label="Theme: system" title="Switch theme">
+          <span class="theme-toggle-icon" aria-hidden="true">🖥️</span>
+          <span class="theme-toggle-label">System</span>
+        </button>
         {% if is_admin %}
           <a href="{{ url_for('admin_dashboard') }}">Admin</a>
           <form method="post" action="{{ url_for('admin_logout') }}" class="inline">
@@ -49,5 +66,8 @@
       <span>take what you'll love</span>
     </div>
   </footer>
+
+  <script src="{{ url_for('static', filename='theme.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
 </body>
 </html>

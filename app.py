@@ -18,6 +18,11 @@ from datetime import date, datetime
 from functools import wraps
 from pathlib import Path
 
+try:  # Python 3.9+
+    from zoneinfo import ZoneInfo
+except ImportError:  # pragma: no cover - only on very old Pythons
+    ZoneInfo = None
+
 from flask import (
     Flask, g, request, session, redirect, url_for,
     render_template, abort, flash, send_from_directory,
@@ -58,9 +63,21 @@ ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
 CONVERT_EXTENSIONS = {"heic", "heif"}
 MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "8"))
 
+# Pickup dates are "today" from the giver's point of view, not the server's.
+# Without this a board hosted in UTC starts rejecting *today* as a past date
+# from 5pm onwards on the US west coast.
+TIMEZONE = os.environ.get("TIMEZONE", "")
+
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_MB * 1024 * 1024
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+
+# Session cookie hardening. SameSite=Lax alone blocks the cross-site form POSTs
+# that CSRF depends on; the token check below is the belt to its braces.
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+# Set SECURE_COOKIES=1 when serving over HTTPS (the normal production case).
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("SECURE_COOKIES", "") == "1"
 
 if not os.environ.get("SECRET_KEY"):
     app.logger.warning(
@@ -76,11 +93,34 @@ if ADMIN_PASSWORD == "changeme":
 # --------------------------------------------------------------------------- #
 # Database helpers
 # --------------------------------------------------------------------------- #
+def today_str():
+    """Today's date where the board lives, as YYYY-MM-DD."""
+    if TIMEZONE and ZoneInfo is not None:
+        try:
+            return datetime.now(ZoneInfo(TIMEZONE)).date().isoformat()
+        except Exception:  # unknown zone name — fall back rather than 500
+            app.logger.warning("Unknown TIMEZONE %r — using server local time.", TIMEZONE)
+    return date.today().isoformat()
+
+
+def configure_connection(con):
+    """Pragmas every connection needs.
+
+    WAL lets a reader and a writer work at the same time, and busy_timeout
+    makes a blocked writer wait rather than immediately raising
+    "database is locked" — both matter once gunicorn runs more than one worker.
+    """
+    con.execute("PRAGMA foreign_keys = ON")
+    con.execute("PRAGMA journal_mode = WAL")
+    con.execute("PRAGMA busy_timeout = 5000")
+    con.execute("PRAGMA synchronous = NORMAL")
+
+
 def get_db():
     if "db" not in g:
         g.db = sqlite3.connect(DB_PATH)
         g.db.row_factory = sqlite3.Row
-        g.db.execute("PRAGMA foreign_keys = ON")
+        configure_connection(g.db)
     return g.db
 
 
@@ -94,6 +134,7 @@ def close_db(_exc):
 def init_db():
     schema = (Path(__file__).parent / "schema.sql").read_text()
     con = sqlite3.connect(DB_PATH)
+    configure_connection(con)
     con.executescript(schema)
     # Migration: add pickup_time to claims tables created before this column existed.
     columns = [row[1] for row in con.execute("PRAGMA table_info(claims)")]
@@ -109,7 +150,7 @@ def get_blocked_dates(db, upcoming_only=False):
         "SELECT id, date, reason FROM blocked_dates ORDER BY date"
     ).fetchall()
     if upcoming_only:
-        today = date.today().isoformat()
+        today = today_str()
         rows = [r for r in rows if r["date"] >= today]
     return rows
 
@@ -150,11 +191,25 @@ def get_csrf_token():
     return session["csrf_token"]
 
 
+def secure_equals(a, b):
+    """Constant-time compare that survives non-ASCII input.
+
+    hmac.compare_digest raises TypeError on strings with non-ASCII characters,
+    which turned a wrong password (or a mangled form token) into a 500.
+    Comparing the UTF-8 bytes has no such restriction.
+    """
+    return hmac.compare_digest(str(a).encode("utf-8"), str(b).encode("utf-8"))
+
+
 @app.before_request
 def csrf_protect():
     if request.method == "POST":
+        expected = session.get("csrf_token", "")
         sent = request.form.get("csrf_token", "")
-        if not hmac.compare_digest(sent, session.get("csrf_token", "")):
+        # An empty expected token must never match: without this, a POST from a
+        # session that had never rendered a form passed the check outright,
+        # because "" == "".
+        if not expected or not secure_equals(sent, expected):
             abort(400, "Invalid or missing form token. Please reload and retry.")
 
 
@@ -165,7 +220,7 @@ def inject_globals():
         "site_name": SITE_NAME,
         "site_tagline": SITE_TAGLINE,
         "is_admin": session.get("is_admin", False),
-        "today": date.today().isoformat(),
+        "today": today_str(),
     }
 
 
@@ -216,6 +271,28 @@ def save_upload(file_storage):
     return url_for("uploaded_file", filename=name)
 
 
+def delete_upload(image_url):
+    """Remove a previously uploaded file, if the URL points at one of ours.
+
+    Pasted external URLs and empty values are ignored. Without this, replacing
+    or deleting an item left its photo on disk forever.
+    """
+    if not image_url:
+        return
+    prefix = url_for("uploaded_file", filename="")
+    if not image_url.startswith(prefix):
+        return
+    name = Path(image_url[len(prefix):]).name  # basename only — no traversal
+    if not name:
+        return
+    try:
+        (UPLOAD_DIR / name).unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as exc:  # pragma: no cover - permissions, etc.
+        app.logger.warning("Couldn't delete upload %s: %s", name, exc)
+
+
 @app.route("/uploads/<path:filename>")
 def uploaded_file(filename):
     return send_from_directory(UPLOAD_DIR, filename)
@@ -226,6 +303,27 @@ def uploaded_file(filename):
 # --------------------------------------------------------------------------- #
 def clean(text, limit):
     return (text or "").strip()[:limit]
+
+
+def safe_image_url(value):
+    """Accept only URLs that are safe to drop into src= and CSS url().
+
+    Anything that isn't an http(s) URL or one of our own /uploads/ paths is
+    rejected, which rules out javascript: and data: URLs. Quotes, parentheses
+    and whitespace are rejected too: image_url is interpolated into a
+    background-image: url('…') declaration on the board, and those characters
+    would let it escape the declaration.
+    """
+    value = (value or "").strip()
+    if not value:
+        return ""
+    if any(ch in value for ch in "'\"()<>\\ \t\r\n"):
+        raise ValueError("That image URL contains characters we can't use.")
+    if value.startswith("/uploads/"):
+        return value
+    if re.match(r"^https?://", value, re.IGNORECASE):
+        return value
+    raise ValueError("Image URLs need to start with http:// or https://.")
 
 
 def valid_date(value):
@@ -297,7 +395,7 @@ def claim(item_id):
         errors.append("Please add a way to reach you (email or phone).")
     if not valid_date(pickup_date):
         errors.append("Please choose a valid pickup date.")
-    elif pickup_date < date.today().isoformat():
+    elif pickup_date < today_str():
         errors.append("Pickup date can't be in the past.")
     elif pickup_date in blocked:
         errors.append("That date isn't available for pickup. Please choose another.")
@@ -315,11 +413,8 @@ def claim(item_id):
     )
     db.commit()
 
-    # Position among active claims (0 = recipient).
-    recipient, waitlist = claim_queue(db, item_id)
-    position = 0 if recipient and recipient["token"] == token else \
-        next((i + 1 for i, c in enumerate(waitlist) if c["token"] == token), 0)
-
+    # claim_success recomputes the queue position from the token, so there's
+    # nothing to pass along here.
     return redirect(url_for("claim_success", token=token))
 
 
@@ -366,7 +461,8 @@ def claim_cancel(token):
 def admin_login():
     if request.method == "POST":
         password = request.form.get("password", "")
-        if hmac.compare_digest(password, ADMIN_PASSWORD):
+        if secure_equals(password, ADMIN_PASSWORD):
+            session.clear()  # new privilege level, new session identifiers
             session["is_admin"] = True
             dest = request.args.get("next", "")
             if dest.startswith("/admin"):
@@ -423,7 +519,7 @@ def admin_dates():
         return redirect(url_for("admin_dates"))
 
     blocked = get_blocked_dates(db)
-    today = date.today().isoformat()
+    today = today_str()
     return render_template("admin_dates.html", blocked=blocked, today=today)
 
 
@@ -449,6 +545,7 @@ def admin_item_new():
             return render_template("admin_item_form.html", item=None,
                                    form=request.form)
         try:
+            image_url = safe_image_url(image_url)
             uploaded = save_upload(request.files.get("image_file"))
         except ValueError as exc:
             flash(str(exc), "error")
@@ -483,17 +580,21 @@ def admin_item_edit(item_id):
             return render_template("admin_item_form.html", item=item,
                                    form=request.form)
         try:
+            image_url = safe_image_url(image_url)
             uploaded = save_upload(request.files.get("image_file"))
         except ValueError as exc:
             flash(str(exc), "error")
             return render_template("admin_item_form.html", item=item,
                                    form=request.form)
+        new_image = uploaded or image_url
         db.execute(
             "UPDATE items SET title = ?, description = ?, image_url = ?, status = ? "
             "WHERE id = ?",
-            (title, description, uploaded or image_url, status, item_id),
+            (title, description, new_image, status, item_id),
         )
         db.commit()
+        if new_image != item["image_url"]:
+            delete_upload(item["image_url"])
         flash("Changes saved.", "ok")
         return redirect(url_for("admin_item_manage", item_id=item_id))
     return render_template("admin_item_form.html", item=item, form=item)
@@ -523,8 +624,12 @@ def admin_item_manage(item_id):
 @login_required
 def admin_item_delete(item_id):
     db = get_db()
+    item = db.execute("SELECT * FROM items WHERE id = ?", (item_id,)).fetchone()
+    if item is None:
+        abort(404)
     db.execute("DELETE FROM items WHERE id = ?", (item_id,))
     db.commit()
+    delete_upload(item["image_url"])
     flash("Item deleted.", "ok")
     return redirect(url_for("admin_dashboard"))
 
@@ -595,4 +700,10 @@ def too_large(_e):
 init_db()
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8000")), debug=True)
+    # Debug mode exposes the Werkzeug console — opt in explicitly with
+    # FLASK_DEBUG=1 rather than shipping it on by default.
+    app.run(
+        host=os.environ.get("HOST", "127.0.0.1"),
+        port=int(os.environ.get("PORT", "8000")),
+        debug=os.environ.get("FLASK_DEBUG", "") == "1",
+    )
