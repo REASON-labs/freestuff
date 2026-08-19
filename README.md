@@ -27,9 +27,9 @@ container, so it's happy on a small VPS, a home server, or a Raspberry Pi.
   Public pages just show *Available* / *Claimed · N waiting* / *Given away*.
 - **Built-in safety** — CSRF protection, upload validation, autoescaped
   templates, and a private per-claim link people can use to withdraw themselves.
-- **Light & dark themes** — follows the visitor's system setting by default; the
-  header toggle cycles System → Light → Dark and remembers the choice. No JS
-  required for the system default.
+- **Light & dark themes** — follows the visitor's system setting by default
+  (light if it doesn't express one); the header icon flips between light and
+  dark and remembers the choice. No JS required for the system default.
 
 ![Claiming an item](docs/screenshot-claim.png)
 
@@ -169,7 +169,7 @@ hardening.py         # anti-abuse core: rate limiter, form stamps, validation
 schema.sql           # database schema
 templates/           # Jinja2 templates
 static/style.css     # styling + light/dark design tokens
-static/theme.js      # theme toggle (system / light / dark)
+static/theme.js      # theme toggle (system default, light/dark override)
 static/app.js        # shared behaviours (confirmation prompts)
 tests/               # pytest suite
 Dockerfile

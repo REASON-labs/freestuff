@@ -447,27 +447,28 @@ textarea { resize: vertical; }
 }
 
 /* ---------- theme toggle ---------- */
+/* Icon-only, same idea as RentStuff's — but round rather than its hard square,
+   to sit with the gift-tag system's soft corners. 32px keeps it above the 24px
+   minimum touch target while staying visually quiet next to the nav links. */
 .theme-toggle {
-  display: inline-flex; align-items: center; gap: 6px;
-  font: inherit; font-size: .9rem; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  padding: 0;
   color: var(--nav-link);
   background: transparent;
   border: 1px solid var(--nav-link);
-  border-radius: 20px;
-  padding: 5px 12px;
+  border-radius: 50%;
   cursor: pointer;
-  line-height: 1;
+  line-height: 0;
   transition: color .15s ease, border-color .15s ease, background-color .15s ease;
 }
+/* An explicit `display` beats the UA stylesheet's `[hidden] { display: none }`,
+   so without this the button renders for people with JS disabled — visible,
+   focusable, and completely inert. */
+.theme-toggle[hidden] { display: none; }
 .theme-toggle:hover { color: var(--nav-link-hover); border-color: var(--nav-link-hover); }
 .theme-toggle:focus-visible { outline: 2px solid var(--nav-link-hover); outline-offset: 2px; }
-.theme-toggle-icon { font-size: .95rem; line-height: 1; }
-.theme-toggle-label { letter-spacing: .01em; }
-
-@media (max-width: 560px) {
-  .theme-toggle-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .theme-toggle { padding: 6px 9px; }
-}
+.theme-toggle svg { display: block; }
 
 /* visually hidden, still read by screen readers */
 .sr-only {

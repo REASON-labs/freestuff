@@ -27,11 +27,11 @@
         <span class="brand-name">{{ site_name }}</span>
       </a>
       <nav class="site-nav">
+        {#- Icon and label are filled in by theme.js, which knows which theme is
+            actually in effect. Rendering one here would guess wrong half the
+            time and flash the wrong icon before the script runs. -#}
         <button type="button" class="theme-toggle" id="theme-toggle" hidden
-                aria-label="Theme: system" title="Switch theme">
-          <span class="theme-toggle-icon" aria-hidden="true">🖥️</span>
-          <span class="theme-toggle-label">System</span>
-        </button>
+                aria-label="Switch theme"></button>
         {% if is_admin %}
           <a href="{{ url_for('admin_dashboard') }}">Admin</a>
           <form method="post" action="{{ url_for('admin_logout') }}" class="inline">
