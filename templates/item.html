@@ -33,14 +33,32 @@
 
       <form class="claim-form" method="post" action="{{ url_for('claim', item_id=item.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {#- Signed issue-time. Lets the server reject a submission that arrived
+            impossibly fast (a script) or many hours late (a scraped-and-replayed
+            form) without storing per-form state. -#}
+        <input type="hidden" name="form_stamp" value="{{ form_stamp() }}">
+
+        {#- Decoy fields. Positioned off-screen rather than display:none, which
+            more bots know to skip. aria-hidden + tabindex=-1 keep them away from
+            screen readers and keyboard tab order; a real visitor can never fill
+            one, so anything arriving here is automated. -#}
+        <div class="hp-field" aria-hidden="true">
+          {% for field in honeypot_fields %}
+            <label for="hp-{{ field }}">Leave this field empty</label>
+            <input type="text" id="hp-{{ field }}" name="{{ field }}"
+                   tabindex="-1" autocomplete="off">
+          {% endfor %}
+        </div>
+
         <h2 class="form-heading">{{ 'Join the waitlist' if claimed else 'Claim this item' }}</h2>
 
         <label>Your name
-          <input type="text" name="name" maxlength="120" required autocomplete="name">
+          <input type="text" name="name" minlength="2" maxlength="120" required
+                 autocomplete="name">
         </label>
 
         <label>How can we reach you? <span class="hint">email or phone</span>
-          <input type="text" name="contact" maxlength="200" required
+          <input type="text" name="contact" minlength="5" maxlength="200" required
                  placeholder="you@example.com or 555-123-4567">
         </label>
 

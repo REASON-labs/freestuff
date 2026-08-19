@@ -79,14 +79,33 @@ python3 app.py        # http://localhost:8000
 
 All configuration is via environment variables (see `.env.example`):
 
-| Variable        | Default                    | Purpose                                                    |
-|-----------------|----------------------------|------------------------------------------------------------|
-| `ADMIN_PASSWORD`| `changeme`                 | Password for `/admin/login`. **Set this.**                 |
-| `SECRET_KEY`    | random per start           | Signs session cookies. **Set this** so logins survive restarts / multiple workers. |
-| `SITE_NAME`     | `Free Stuff`               | Name shown in the header and page titles.                  |
-| `SITE_TAGLINE`  | `Take what you'll love.`   | The line at the top of the public homepage.                |
-| `MAX_UPLOAD_MB` | `8`                        | Max photo upload size.                                     |
-| `DATA_DIR`      | `/data` (Docker) / `data`  | Where the database and uploads are stored.                 |
+| Variable | Default | Purpose |
+|---|---|---|
+| `ADMIN_PASSWORD_HASH` | — | Hashed password for `/admin/login`. **Preferred.** Generate with `python app.py hash-password`. |
+| `ADMIN_PASSWORD` | `changeme` | Plaintext fallback, still honoured so existing deployments keep working. Set the hash instead. |
+| `SECRET_KEY` | random per start | Signs session cookies and claim-form stamps. **Set this** so logins survive restarts / multiple workers. |
+| `SITE_NAME` | `Free Stuff` | Name shown in the header and page titles. |
+| `SITE_TAGLINE` | `Take what you'll love.` | The line at the top of the public homepage. |
+| `MAX_UPLOAD_MB` | `8` | Max photo upload size. |
+| `MAX_IMAGE_PIXELS` | `50000000` | Refuse to decode images above this pixel count (decompression-bomb guard). |
+| `DATA_DIR` | `/data` (Docker) / `data` | Where the database and uploads are stored. |
+| `TIMEZONE` | server local | Zone used to decide what "today" is when validating pickup dates, e.g. `America/Los_Angeles`. |
+| `SECURE_COOKIES` | off | Set to `1` when serving over HTTPS so the session cookie is HTTPS-only. |
+| `TRUSTED_PROXIES` | `0` | How many reverse proxies sit in front of the app. **Set this if you use one** — see below. |
+| `BLOCK_DISPOSABLE_EMAIL` | off | Set to `1` to turn away contact addresses on known throwaway-mail domains. |
+| `HOST` | `127.0.0.1` | Bind address for `python app.py` (the dev server only). |
+| `PORT` | `8000` | Port for `python app.py`. |
+| `FLASK_DEBUG` | off | Set to `1` for the Werkzeug debugger. **Never in production** — it is a remote shell. |
+
+### Setting the admin password
+
+```bash
+python app.py hash-password     # prompts twice, prints ADMIN_PASSWORD_HASH=...
+```
+
+Put the result in `.env` and remove `ADMIN_PASSWORD`. The plaintext variable
+still works if you'd rather not migrate, but it is visible to anyone who can run
+`docker inspect` or read the compose file, and the app logs a warning on boot.
 
 ## Putting it behind HTTPS
 
@@ -115,6 +134,13 @@ server {
 }
 ```
 
+**Whichever proxy you use, set `TRUSTED_PROXIES=1`.** Without it every visitor
+appears to the app as the proxy's own address, so the rate limiter sees the
+whole board as one client and the first spammer locks everyone out. Set it to
+the number of proxies actually in the chain — count Cloudflare if it's in front
+of your own. Setting it higher than the real number is the opposite mistake: a
+client can then forge `X-Forwarded-For` and skip the limiter entirely.
+
 ## Backups
 
 Everything lives in one place — the data volume:
@@ -139,14 +165,65 @@ CI runs the test suite on Python 3.9, 3.11, and 3.12.
 
 ```
 app.py               # the whole application (routes, auth, claim logic)
+hardening.py         # anti-abuse core: rate limiter, form stamps, validation
 schema.sql           # database schema
 templates/           # Jinja2 templates
 static/style.css     # styling + light/dark design tokens
 static/theme.js      # theme toggle (system / light / dark)
+static/app.js        # shared behaviours (confirmation prompts)
 tests/               # pytest suite
 Dockerfile
 docker-compose.yml
 ```
+
+## Anti-abuse
+
+The public claim form is the one place strangers can write to the database, so
+it is defended in layers. None of these is strong alone; together they stop the
+form-flooding pattern that hit the sibling RentStuff board (21 near-identical
+submissions in 20 seconds) without putting a CAPTCHA in front of your friends.
+
+| Layer | What it does |
+|---|---|
+| CSRF token | Session-scoped token on every form, verified on POST. |
+| Signed form stamp | Hidden, signed issue-time. Rejects submissions faster than 3s (scripted) or older than 6h (scraped and replayed). |
+| Honeypots | Two off-screen decoy fields. Anything that fills one is automated. |
+| Rate limits | Per IP: 3 claims / 2 min, 10 / hour, and 2 / hour on any one item. |
+| Field validation | Contact must be an actual email address or phone number; names and notes reject links; control characters stripped. |
+| Duplicate detection | A second claim from the same contact returns your existing place in line instead of taking a second slot. |
+| Login throttle | 5 failed admin passwords per IP per 15 minutes, then HTTP 429. |
+| Structured logs | One JSON line per outcome on stdout. |
+
+Deliberately **not** included: a CAPTCHA (an external script on every page, and
+a real accessibility cost, for a board a few dozen people use), and gibberish
+or entropy scoring on names — it flags real names like *Szczepanski* far more
+often than it catches a bot that can just as easily generate *Sarah Miller*.
+Both stay on the table if spam gets past the layers above.
+
+### Watching for trouble
+
+Rejections are logged as JSON on stdout, so `docker compose logs` is the whole
+observability story:
+
+```bash
+# what got turned away, and why
+docker compose logs freestuff | grep claim_rejected | jq -r .reason | sort | uniq -c
+
+# addresses hitting the rate limiter
+docker compose logs freestuff | grep rate_limited | jq -r .ip | sort | uniq -c | sort -rn
+```
+
+No claimant name, contact detail or note text is ever logged. Contacts appear
+only as a truncated hash, which is enough to correlate a repeat offender across
+entries without the log becoming a second copy of the claims table.
+
+### A note on scale
+
+The rate limiter holds its counters in process memory rather than Redis, which
+keeps the deploy at one container. The tradeoff: each gunicorn worker counts
+separately, so with the default 2 workers a client gets roughly twice the listed
+allowance before being throttled. The thresholds above are set with that in
+mind. If you raise `--workers`, lower the limits in `RATE_LIMITS` to match.
 
 ## Scope & notes
 
@@ -154,6 +231,9 @@ Built deliberately small for a friends-and-family use case:
 
 - Admin is a single shared password — fine behind HTTPS for a private board.
   Per-user admin accounts would be the natural next step.
+- There is no Content-Security-Policy yet. The pre-paint theme script has to be
+  inline to avoid a flash of light mode, so a strict policy needs a per-request
+  nonce first. Everything else in the header set is in place.
 - No email/SMS notifications; the admin sees contacts in the queue and reaches
   out directly.
 
