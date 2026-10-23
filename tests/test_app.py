@@ -9,6 +9,7 @@ import re
 import sqlite3
 import tempfile
 import time
+from collections import deque
 
 import pytest
 
@@ -870,3 +871,79 @@ def test_admin_cannot_block_a_past_date(client):
                     follow_redirects=True)
     assert b"already passed" in r.data
     assert db().execute("SELECT COUNT(*) FROM blocked_dates").fetchone()[0] == 0
+
+
+# --------------------------------------------------------------------------- #
+# Should-fix: TRUSTED_PROXIES clamping
+# --------------------------------------------------------------------------- #
+def test_trusted_proxies_clamped_to_3(monkeypatch):
+    """TRUSTED_PROXIES > 3 is clamped to 3 with a warning."""
+    monkeypatch.setenv("TRUSTED_PROXIES", "10")
+    # Re-import to pick up the new env var
+    import importlib
+    importlib.reload(fs)
+    assert fs.TRUSTED_PROXIES == 3
+
+
+def test_trusted_proxies_unchanged_when_within_limit(monkeypatch):
+    """TRUSTED_PROXIES <= 3 is used as-is."""
+    monkeypatch.setenv("TRUSTED_PROXIES", "2")
+    import importlib
+    importlib.reload(fs)
+    assert fs.TRUSTED_PROXIES == 2
+
+
+# --------------------------------------------------------------------------- #
+# Should-fix: admin_item_reopen cancels old claims
+# --------------------------------------------------------------------------- #
+def test_reopen_cancels_old_active_claims(client):
+    """Reopening an item should cancel all active claims from the previous lifecycle."""
+    login(client)
+    add_item(client, "Old item", "Was given away")
+    item_id = db().execute("SELECT id FROM items").fetchone()["id"]
+
+    # Place a claim, then mark the item gone with that claim active
+    c = claim_item(client, item_id)
+    con = db()
+    con.execute("UPDATE items SET status = 'gone'")
+    # Don't fulfill the claim — leave it active so reopen has something to cancel
+    con.commit()
+    con.close()
+
+    # Verify there is an active claim
+    con = db()
+    assert con.execute("SELECT COUNT(*) FROM claims WHERE item_id = ? AND status = 'active'", (item_id,)).fetchone()[0] >= 1
+    con.close()
+
+    # Reopen the item — navigate to manage page, then POST the reopen form
+    r = client.get(f"/admin/item/{item_id}", follow_redirects=True)
+    token = csrf(r.get_data(as_text=True))
+    r = client.post(
+        f"/admin/item/{item_id}/reopen",
+        data={"csrf_token": token},
+        follow_redirects=True,
+    )
+    assert b"back on the board" in r.data
+
+    # All active claims should now be cancelled
+    con = db()
+    active = con.execute(
+        "SELECT COUNT(*) FROM claims WHERE item_id = ? AND status = 'active'",
+        (item_id,),
+    ).fetchone()[0]
+    con.close()
+    assert active == 0
+
+
+# --------------------------------------------------------------------------- #
+# Should-fix: RateLimiter hard cap
+# --------------------------------------------------------------------------- #
+def test_rate_limiter_hard_cap():
+    """RateLimiter._sweep enforces a hard cap on dict size."""
+    rl = hardening.RateLimiter(clock=lambda: 1000)
+    # Fill with more keys than the default cap
+    for i in range(5000):
+        rl._hits[f"key-{i}"] = deque([1000])
+    # Advance clock past the 300s sweep interval so _sweep actually runs
+    rl._sweep(1301)
+    assert len(rl._hits) <= 4096
