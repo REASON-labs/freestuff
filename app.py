@@ -86,7 +86,17 @@ Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 # This MUST be right: set it too low and every visitor shares the proxy's IP, so
 # one spammer rate-limits the whole board; set it too high and a client can
 # forge X-Forwarded-For and dodge the limiter entirely. 0 = no proxy.
-TRUSTED_PROXIES = int(os.environ.get("TRUSTED_PROXIES", "0"))
+# Hard upper bound: more than 3 is almost certainly a misconfiguration and
+# almost certainly wrong — no sane deployment puts more than 3 trusted proxies
+# in front of a single-origin app.
+_TRUSTED_PROXIES_RAW = int(os.environ.get("TRUSTED_PROXIES", "0"))
+TRUSTED_PROXIES = min(_TRUSTED_PROXIES_RAW, 3)
+if _TRUSTED_PROXIES_RAW > 3:
+    app.logger.warning(
+        "TRUSTED_PROXIES was %d — clamped to 3. A higher value likely means "
+        "clients can forge X-Forwarded-For and bypass rate limiting.",
+        _TRUSTED_PROXIES_RAW,
+    )
 
 # Reject contact addresses on known throwaway-mail domains. Off by default:
 # on a board for friends, wrongly turning away a real person costs more than
@@ -970,6 +980,15 @@ def admin_item_given(item_id):
 @login_required
 def admin_item_reopen(item_id):
     db = get_db()
+    # Cancel all old active claims so the queue is clean on reopen.
+    # Previously these stale claims remained visible (with no indication they
+    # were from a previous lifecycle of the item), confusing admins and
+    # claimants alike.
+    db.execute(
+        "UPDATE claims SET status = 'cancelled' "
+        "WHERE item_id = ? AND status = 'active'",
+        (item_id,),
+    )
     db.execute("UPDATE items SET status = 'available' WHERE id = ?", (item_id,))
     db.commit()
     flash("Item is back on the board.", "ok")

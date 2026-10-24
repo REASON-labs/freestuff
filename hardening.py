@@ -87,8 +87,8 @@ class RateLimiter:
         with self._lock:
             self._hits.pop(key, None)
 
-    def _sweep(self, now, max_age=3600):
-        """Drop buckets nothing has touched in an hour.
+    def _sweep(self, now, max_age=3600, max_keys=4096):
+        """Drop stale buckets and enforce a hard cap on dict size.
 
         Without this the dict grows once per unique IP forever, which is a slow
         memory leak an attacker with a proxy pool could accelerate.
@@ -100,6 +100,20 @@ class RateLimiter:
         stale = [k for k, v in self._hits.items() if not v or v[-1] <= cutoff]
         for k in stale:
             del self._hits[k]
+        # Hard cap: if the dict is still too large, evict the oldest-accessed
+        # keys (those with the smallest last-hit timestamp). This prevents a
+        # sustained proxy-pool attack from keeping the dict above a reasonable
+        # size even when individual keys haven't fully aged out yet.
+        if len(self._hits) > max_keys:
+            # Sort by last access time ascending; drop the oldest half of the
+            # excess to avoid a cliff-edge evict-then-reattach pattern.
+            excess = len(self._hits) - max_keys // 2
+            by_last_hit = sorted(
+                (k for k in self._hits),
+                key=lambda k: self._hits[k][-1] if self._hits[k] else 0,
+            )
+            for k in by_last_hit[:excess]:
+                del self._hits[k]
 
 
 # --------------------------------------------------------------------------- #
